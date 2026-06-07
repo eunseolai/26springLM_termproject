@@ -3,12 +3,11 @@ from src.data.dataset import split_ds
 from src.data.preprocess import get_preprocess_fn
 from src.models.backbone import get_model
 from src.training.trainer import WeightedTrainer
-from src.utils.metrics import safe, compute_metrics
+from src.utils.metrics import compute_metrics
 from src.constants import label2id, id2label
 
 def main():
     # 1. dataset
-    from datasets import load_dataset
     ds_a, ds_l = load_pubmedqa_datasets()
 
     # 2. model and tokenizer
@@ -34,17 +33,15 @@ def main():
     from collections import Counter
     from transformers import TrainingArguments, Trainer
     import torch
-    import torch.nn as nn
     from transformers import EarlyStoppingCallback
 
     # train_ds, eval_ds = split_ds(processed_a, test_size=0.2, seed=42).values()
-    ds_a = split_ds(processed_a, test_size=0.2, seed=42)
-    ds_l = split_ds(processed_l, test_size=0.2, seed=42)
-    X_train_a, X_test_a = ds_a["train"], ds_a["test"]
-    X_train_l, X_test_l = ds_l["train"], ds_l["test"]
+    # split_a = split_ds(processed_a, test_size=0.2, seed=42)
+    split_l = split_ds(processed_l, test_size=0.2, seed=42)
+    X_train_a = processed_a
+    X_train_l, X_test_l = split_l["train"], split_l["test"]
 
-    # Compute class weights
-    ds = ds_a
+    # Compute class weights; use in phase 1
     label_counts = Counter(ds_a["train"]["final_decision"])
 
     N = sum(label_counts.values())
@@ -52,7 +49,7 @@ def main():
 
     # Initialize class weights to 1.0 for all classes
     class_weights = torch.ones(len(label2id), dtype=torch.float)
-    for label, idx in label_counts.items():
+    for label, idx in label2id.items():
         count = label_counts.get(label, 0)
         if count > 0:
             class_weights[idx] = N / (K * count)
@@ -61,7 +58,7 @@ def main():
     batch_size=8
     # phase 1
     args_stage1 = TrainingArguments(
-        output_dir="./checkpoint",
+        output_dir="./checkpoint_stage1",
         num_train_epochs=2,
         learning_rate=2e-5,
         per_device_train_batch_size=batch_size,
@@ -71,6 +68,9 @@ def main():
         # small steps for small dataset
         logging_steps = max(1, len(X_train_a)//batch_size//10),
         load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+        
         seed=42,
         fp16=True,  # 16bit->memory efficient
         dataloader_num_workers=2  # 병렬 load
@@ -81,7 +81,7 @@ def main():
         model=model,
         args=args_stage1,
         train_dataset=X_train_a,
-        eval_dataset=X_test_a,
+        eval_dataset=X_test_l,
         compute_metrics=compute_metrics,
         class_weights=class_weights,
 
@@ -102,7 +102,7 @@ def main():
     total_steps = len(X_train_l) // batch_size * num_train_epochs
 
     args_stage2 = TrainingArguments(
-        output_dir="./checkpoint",
+        output_dir="./checkpoint_stage2",
         num_train_epochs=num_train_epochs, # early stopping -> ok
         learning_rate=5e-6, # smaller lr for fine adjustment
 
@@ -112,6 +112,9 @@ def main():
         save_strategy="epoch",
         logging_steps=10,
         load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
+
         seed=42,
         fp16=True,  # 16bit->memory efficient
         dataloader_num_workers=2,  # 병렬 load
