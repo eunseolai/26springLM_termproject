@@ -1,59 +1,28 @@
+from src.data.dataset import load_pubmedqa_datasets
+from src.data.dataset import split_ds
+from src.data.preprocess import get_preprocess_fn
+from src.models.backbone import get_model
+from src.training.trainer import WeightedTrainer
+from src.utils.metrics import safe, compute_metrics
+from src.constants import label2id, id2label
+
 def main():
     # 1. dataset
     from datasets import load_dataset
-    ds_a = load_dataset("qiaojin/PubMedQA", "pqa_artificial")
-    ds_l = load_dataset("qiaojin/PubMedQA", "pqa_labeled")
-
-    def split_ds(dataset, **kwargs):
-        return dataset.train_test_split(**kwargs)
+    ds_a, ds_l = load_pubmedqa_datasets()
 
     # 2. model and tokenizer
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-    label2id = {
-    "yes": 0,
-    "no": 1,
-    "maybe": 2
-    }
-
-    id2label = {
-        0: "yes",
-        1: "no",
-        2: "maybe"
-    }
-
-    def get_model(model_name):
-        return AutoModelForSequenceClassification.from_pretrained(
-            model_name,
-            num_labels=3,
-            id2label=id2label,
-            label2id=label2id
-        )
-    
+    from transformers import AutoTokenizer
     model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract"
-    model = get_model(model_name)
+    model = get_model(model_name, peft_method=None)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     # 3. preprocessing
-    def preprocess(example):
-        context_text = " ".join(example["context"]["contexts"])
+    preprocess = get_preprocess_fn(tokenizer)
 
-        model_input = tokenizer(
-            example["question"],
-            context_text,
-            truncation=True,
-            padding="max_length",
-            max_length=512
-        )
-
-        label = label2id[example["final_decision"]]
-        model_input["labels"] = label
-
-        return model_input
-    
     processed_a = ds_a["train"].map(preprocess, batched=False)
     processed_a = processed_a.remove_columns(
-        [    "pubid", "question", "context", "long_answer", "final_decision"]
+        ["pubid", "question", "context", "long_answer", "final_decision"]
         )
     
     processed_l = ds_l["train"].map(preprocess, batched=False)
@@ -62,12 +31,10 @@ def main():
     )
 
     # 4. training
-    from sklearn.utils.class_weight import compute_class_weight
     from collections import Counter
     from transformers import TrainingArguments, Trainer
     import torch
     import torch.nn as nn
-    import numpy as np
     from transformers import EarlyStoppingCallback
 
     # train_ds, eval_ds = split_ds(processed_a, test_size=0.2, seed=42).values()
@@ -84,93 +51,15 @@ def main():
     K = len(label2id)
 
     # Initialize class weights to 1.0 for all classes
-    class_weights = torch.ones(len(label2id), dtype=torch.float).to(model.device)
+    class_weights = torch.ones(len(label2id), dtype=torch.float)
     for label, idx in label_counts.items():
         count = label_counts.get(label, 0)
         if count > 0:
             class_weights[idx] = N / (K * count)
 
 
-    # Define a custom Trainer to use class weights
-    class WeightedTrainer(Trainer):
-        def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-            labels = inputs.pop("labels")
-
-            outputs = model(**inputs)
-            logits = outputs.get("logits")
-
-            device = logits.device
-
-            # Compute the loss with class weights
-            loss_fct = nn.CrossEntropyLoss(
-                weight=class_weights.to(logits.device)
-                )  # Adjust weights as needed
-            loss = loss_fct(logits, labels)
-
-            return (loss, outputs) if return_outputs else loss
-        
-    def safe(arr, idx):
-        return arr[idx] if idx < len(arr) else 0.0
-    
-    import numpy as np
-
-    from sklearn.metrics import (
-        accuracy_score,
-        precision_recall_fscore_support
-    )
-
-    def compute_metrics(eval_pred):
-        logits = eval_pred.predictions
-        labels = eval_pred.label_ids
-
-        preds = np.argmax(logits, axis=-1)
-
-        # macro metrics
-        precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
-            labels,
-            preds,
-            average="macro"
-        )
-
-        acc = accuracy_score(labels, preds)
-
-        # per-class metrics
-        precision_cls, recall_cls, f1_cls, support = precision_recall_fscore_support(
-            labels,
-            preds,
-            average=None,
-            labels=[0,1,2],
-            zero_division=0
-        )
-
-        return {
-            # macro
-            "accuracy": acc,
-            "macro_f1": f1_macro,
-            "macro_precision": precision_macro,
-            "macro_recall": recall_macro,
-
-            # per-class
-            "yes_precision": safe(precision_cls, 0),
-            "no_precision": safe(precision_cls, 1),
-            "maybe_precision": safe(precision_cls, 2),
-
-            "yes_recall": safe(recall_cls, 0),
-            "no_recall": safe(recall_cls, 1),
-            "maybe_recall": safe(recall_cls, 2),
-
-            "yes_f1": safe(f1_cls, 0),
-            "no_f1": safe(f1_cls, 1),
-            "maybe_f1": safe(f1_cls, 2),
-
-            # optional (데이터 분포 확인용)
-            "support_yes": safe(support, 0),
-            "support_no": safe(support, 1),
-            "support_maybe": safe(support, 2),
-        }
-
     batch_size=8
-
+    # phase 1
     args_stage1 = TrainingArguments(
         output_dir="./checkpoint",
         num_train_epochs=2,
@@ -194,6 +83,7 @@ def main():
         train_dataset=X_train_a,
         eval_dataset=X_test_a,
         compute_metrics=compute_metrics,
+        class_weights=class_weights,
 
         callbacks=[
             EarlyStoppingCallback(early_stopping_patience=2)
@@ -247,3 +137,6 @@ def main():
     trainer_stage2.save_model()
     metrics = trainer_stage2.evaluate()
     print(metrics)
+
+if __name__ == "__main__":
+    main()
