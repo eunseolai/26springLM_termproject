@@ -12,6 +12,11 @@ def get_adapter_model(model_name, num_labels=3):
     model.train_adapter("pubmedqa_adapter")
     model.set_active_adapters("pubmedqa_adapter")
 
-    model.print_trainable_parameters()
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Trainable params: {trainable_params} || "
+          f"all params: {total_params} || "
+          f"trainable%: {100 * trainable_params / total_params:.4f}%"
+          )
 
     return model
