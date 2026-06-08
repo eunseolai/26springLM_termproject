@@ -11,7 +11,5 @@ def apply_lora(model, r=None):
     peft_config = LoraConfig(**lora_config)
 
     model = get_peft_model(model, peft_config)
-
     model.print_trainable_parameters()
-
     return model

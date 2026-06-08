@@ -68,7 +68,11 @@ def main():
     ds_a, ds_l = load_pubmedqa_datasets()
 
     # 2. model & tokenizer
-    model = build_model(model_name=args.model_name, method=args.method)
+    model = build_model(
+        model_name=args.model_name, 
+        method=args.method, 
+        args=args
+        )
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # 3. training

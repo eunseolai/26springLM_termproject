@@ -15,7 +15,7 @@ from src.constants import label2id
 
 def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
     if args.method == "prefix":
-        max_length = 512 - args.num_prefix_virtual_tokens
+        max_length = 512 - args.prefix_num_virtual_tokens
     else:
         max_length = 512
     

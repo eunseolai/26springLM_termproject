@@ -1,7 +1,7 @@
 from src.models.backbone import get_model as get_base_model
 
 
-def build_model(model_name, method=None):
+def build_model(model_name, method=None, args=None):
 
     # adapter
     if method == "adapter":
@@ -22,7 +22,10 @@ def build_model(model_name, method=None):
 
     elif method in ["prefix", "prefix_tuning"]:
         from src.peft.prefix_tuning import apply_prefix_tuning
-        return apply_prefix_tuning(model)
+        return apply_prefix_tuning(
+            model,
+            num_virtual_tokens=args.prefix_num_virtual_tokens
+            )
 
     elif method == "ia3":
         from src.peft.ia3 import apply_ia3
