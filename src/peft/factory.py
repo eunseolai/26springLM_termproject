@@ -20,7 +20,7 @@ def build_model(model_name, method=None):
         from src.peft.dora import apply_dora
         return apply_dora(model)
 
-    elif method == "prefix_tuning":
+    elif method in ["prefix", "prefix_tuning"]:
         from src.peft.prefix_tuning import apply_prefix_tuning
         return apply_prefix_tuning(model)
 
