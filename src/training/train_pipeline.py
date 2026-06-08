@@ -53,6 +53,8 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
     batch_size = args.batch_size
     safe_model_name = args.model_name.split("/")[-1]
     total_start_time = time.perf_counter()
+    load_best = False if args.method == "prefix" else True
+
     # 4. phase 1
     args_stage1 = TrainingArguments(
         output_dir=f"./outputs/{safe_model_name}/{args.method}/checkpoint_stage1",
@@ -63,7 +65,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
         eval_strategy="epoch",
         save_strategy="epoch",
         logging_steps=max(1, len(X_train_a) // batch_size // 10),
-        load_best_model_at_end=True,
+        load_best_model_at_end=load_best,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         seed=args.seed,
@@ -106,7 +108,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
         eval_strategy="epoch",
         save_strategy="epoch",
         logging_steps=10,
-        load_best_model_at_end=True,
+        load_best_model_at_end=load_best,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         seed=args.seed,
