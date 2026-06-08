@@ -1,5 +1,5 @@
 from collections import Counter
-
+import time
 import torch
 from transformers import TrainingArguments, Trainer, EarlyStoppingCallback
 
@@ -9,23 +9,20 @@ from src.training.trainer import WeightedTrainer
 from src.utils.metrics import compute_metrics
 from src.constants import label2id
 
-
-def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
+def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
     # 1. preprocessing
     preprocess = get_preprocess_fn(tokenizer)
-
     processed_a = ds_a["train"].map(preprocess, batched=False)
     processed_a = processed_a.remove_columns(
         ["pubid", "question", "context", "long_answer", "final_decision"]
     )
-
     processed_l = ds_l["train"].map(preprocess, batched=False)
     processed_l = processed_l.remove_columns(
         ["pubid", "question", "context", "long_answer", "final_decision"]
     )
 
     # 2. split
-    split_l = split_ds(processed_l, test_size=0.2, seed=42)
+    split_l = split_ds(processed_l, test_size=0.2, seed=args.seed)
 
     X_train_a = processed_a
     X_train_l = split_l["train"]
@@ -33,10 +30,8 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
 
     # 3. class weights for phase 1
     label_counts = Counter(ds_a["train"]["final_decision"])
-
     N = sum(label_counts.values())
     K = len(label2id)
-
     class_weights = torch.ones(len(label2id), dtype=torch.float)
 
     for label, idx in label2id.items():
@@ -44,13 +39,14 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
         if count > 0:
             class_weights[idx] = N / (K * count)
 
-    batch_size = 8
-
+    batch_size = args.batch_size
+    safe_model_name = args.model_name.split("/")[-1]
+    total_start_time = time.perf_counter()
     # 4. phase 1
     args_stage1 = TrainingArguments(
-        output_dir=f"./outputs/{method}/checkpoint_stage1",
-        num_train_epochs=2,
-        learning_rate=2e-5,
+        output_dir=f"./outputs/{safe_model_name}/{args.method}/checkpoint_stage1",
+        num_train_epochs=args.phase1_epochs,
+        learning_rate=args.phase1_lr,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         eval_strategy="epoch",
@@ -59,7 +55,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        seed=42,
+        seed=args.seed,
         fp16=True,
         dataloader_num_workers=2,
     )
@@ -76,20 +72,23 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
         ],
     )
 
+    stage1_start_time = time.perf_counter()
     trainer_stage1.train()
+    stage1_time = time.perf_counter() - stage1_start_time
     trainer_stage1.save_model()
 
     metrics_stage1 = trainer_stage1.evaluate()
     print("Stage 1 metrics:", metrics_stage1)
+    print(f"Stage 1 training time: {stage1_time:.2f} seconds")
 
     # 5. phase 2
-    num_train_epochs = 8
-    total_steps = len(X_train_l) // batch_size * num_train_epochs
+    num_train_epochs = args.phase2_epochs
+    total_steps = max(1, len(X_train_l) // batch_size * num_train_epochs)
 
     args_stage2 = TrainingArguments(
-        output_dir=f"./outputs/{method}/checkpoint_stage2",
+        output_dir=f"./outputs/{safe_model_name}/{args.method}/checkpoint_stage2",
         num_train_epochs=num_train_epochs,
-        learning_rate=5e-6,
+        learning_rate=args.phase2_lr,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         eval_strategy="epoch",
@@ -98,7 +97,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
-        seed=42,
+        seed=args.seed,
         fp16=True,
         dataloader_num_workers=2,
         warmup_steps=int(0.1 * total_steps),
@@ -116,10 +115,20 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, method):
         ],
     )
 
+    stage2_start_time = time.perf_counter()
     trainer_stage2.train()
+    stage2_time = time.perf_counter() - stage2_start_time
     trainer_stage2.save_model()
 
     metrics_stage2 = trainer_stage2.evaluate()
-    print("Stage 2 metrics:", metrics_stage2)
+    print(f"Stage 2 training time: {stage2_time:.2f} seconds")
 
+    total_time = time.perf_counter() - total_start_time
+    print(f"Total training time: {total_time:.2f} seconds")
+
+    metrics_stage2["stage1_time_sec"] = stage1_time
+    metrics_stage2["stage2_time_sec"] = stage2_time
+    metrics_stage2["total_time_sec"] = total_time
+    metrics_stage2["stage1_eval_loss"] = metrics_stage1["eval_loss"]
+    print("Final metrics:", metrics_stage2)
     return metrics_stage2
