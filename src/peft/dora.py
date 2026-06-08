@@ -11,4 +11,6 @@ def apply_dora(model, r=None):
 
     peft_config = LoraConfig(**dora_config)
 
+    model.print_trainable_parameters()
+
     return get_peft_model(model, peft_config)

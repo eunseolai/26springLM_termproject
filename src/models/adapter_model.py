@@ -12,4 +12,6 @@ def get_adapter_model(model_name, num_labels=3):
     model.train_adapter("pubmedqa_adapter")
     model.set_active_adapters("pubmedqa_adapter")
 
+    model.print_trainable_parameters()
+
     return model
