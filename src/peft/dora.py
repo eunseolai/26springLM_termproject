@@ -10,7 +10,7 @@ def apply_dora(model, r=None):
         dora_config["r"] = r
 
     peft_config = LoraConfig(**dora_config)
-
+    
+    model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-
-    return get_peft_model(model, peft_config)
+    return model

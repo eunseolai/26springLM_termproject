@@ -10,6 +10,6 @@ def apply_prefix_tuning(model, num_virtual_tokens=None):
 
     peft_config = PrefixTuningConfig(**pt_config)
 
+    model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-
-    return get_peft_model(model, peft_config)
+    return model
