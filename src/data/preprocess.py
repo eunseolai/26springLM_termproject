@@ -1,7 +1,7 @@
 from transformers import AutoTokenizer
 from src.constants import label2id
 
-def get_preprocess_fn(tokenizer: AutoTokenizer):
+def get_preprocess_fn(tokenizer: AutoTokenizer, max_length=512):
         
     def preprocess(example):
         context_text = " ".join(example["context"]["contexts"])
@@ -11,7 +11,7 @@ def get_preprocess_fn(tokenizer: AutoTokenizer):
             context_text,
             truncation=True,
             padding="max_length",
-            max_length=512
+            max_length=max_length
         )
 
         model_input["labels"] = label2id[

@@ -14,8 +14,15 @@ from src.utils.metrics import compute_metrics
 from src.constants import label2id
 
 def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
+    if args.method == "prefix":
+        max_length = 512 - args.num_virtual_tokens
+    else:
+        max_length = 512
+    
     # 1. preprocessing
-    preprocess = get_preprocess_fn(tokenizer)
+    preprocess = get_preprocess_fn(
+        tokenizer, max_length=max_length
+    )
     processed_a = ds_a["train"].map(preprocess, batched=False)
     processed_a = processed_a.remove_columns(
         ["pubid", "question", "context", "long_answer", "final_decision"]
@@ -62,6 +69,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
         seed=args.seed,
         fp16=True,
         dataloader_num_workers=2,
+        label_names=["labels"],
     )
 
     trainer_stage1 = WeightedTrainer(
@@ -106,6 +114,7 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
         dataloader_num_workers=2,
         warmup_steps=int(0.1 * total_steps),
         weight_decay=0.01,
+        label_names=["labels"],
     )
 
     trainer_stage2 = Trainer(
