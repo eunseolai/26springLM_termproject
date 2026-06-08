@@ -1,5 +1,6 @@
 from peft import PrefixTuningConfig, get_peft_model
 from src.config import PT_DEFAULTS
+from copy import deepcopy
 
 def apply_prefix_tuning(model, num_virtual_tokens=None):
 
