@@ -1,15 +1,17 @@
 from src.models.backbone import get_model as get_base_model
 
+
 def build_model(model_name, method=None):
 
-    # 1. Adapter 계열 (완전히 다른 모델)
+    # adapter
     if method == "adapter":
+        from src.models.adapter_model import get_adapter_model
         return get_adapter_model(model_name)
 
-    # 2. 기본 backbone
+    # backbone
     model = get_base_model(model_name)
 
-    # 3. PEFT 계열
+    # PEFT
     if method == "lora":
         from src.peft.lora import apply_lora
         return apply_lora(model)
@@ -25,11 +27,6 @@ def build_model(model_name, method=None):
     elif method == "ia3":
         from src.peft.ia3 import apply_ia3
         return apply_ia3(model)
-    
-    elif method == "adapter":
-        from src.models.adapter_model import get_adapter_model
-        return get_adapter_model(model_name)
 
-    # 4. no PEFT
     else:
         return model
