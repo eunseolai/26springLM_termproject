@@ -1,0 +1,29 @@
+# Python
+
+**pycache**/
+*.pyc
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# Training outputs
+
+outputs/
+checkpoint*/
+*.tar.gz
+
+# Hugging Face cache
+
+.cache/
+hf_cache/
+
+# Environment
+
+.env
+venv/
+.venv/
+
+# VSCode
+
+.vscode/
