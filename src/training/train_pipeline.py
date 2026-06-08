@@ -1,3 +1,7 @@
+import os
+import csv
+from datetime import datetime
+
 from collections import Counter
 import time
 import torch
@@ -126,9 +130,42 @@ def run_two_phase_training(model, tokenizer, ds_a, ds_l, args):
     total_time = time.perf_counter() - total_start_time
     print(f"Total training time: {total_time:.2f} seconds")
 
+    metrics_stage2["stage1_eval_loss"] = metrics_stage1["eval_loss"]
+    metrics_stage2["stage2_eval_loss"] = metrics_stage2["eval_loss"]
+
+
     metrics_stage2["stage1_time_sec"] = stage1_time
     metrics_stage2["stage2_time_sec"] = stage2_time
     metrics_stage2["total_time_sec"] = total_time
-    metrics_stage2["stage1_eval_loss"] = metrics_stage1["eval_loss"]
+    
+    save_metrics_to_csv(metrics_stage2, args)
+
     print("Final metrics:", metrics_stage2)
     return metrics_stage2
+
+def save_metrics_to_csv(metrics, args, path="results/experiment_results.csv"):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    row = {
+        "run_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "model_name": args.model_name,
+        "method": args.method,
+        "phase1_epochs": args.phase1_epochs,
+        "phase2_epochs": args.phase2_epochs,
+        "batch_size": args.batch_size,
+        "phase1_lr": args.phase1_lr,
+        "phase2_lr": args.phase2_lr,
+        "safe_model_name": args.model_name.split("/")[-1],
+    }
+
+    row.update(metrics)
+
+    file_exists = os.path.exists(path)
+
+    with open(path, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=row.keys())
+
+        if not file_exists:
+            writer.writeheader()
+
+        writer.writerow(row)
