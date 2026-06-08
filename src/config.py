@@ -15,7 +15,7 @@ PT_DEFAULTS = {
 }
 
 IA3_DEFAULTS = {
-    "target_modules": ["query", "value"],
+    "target_modules": ["query", "value", "dense"],
     "feedforward_modules": ["dense"],
     "task_type": "SEQ_CLS"
 }
